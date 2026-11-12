@@ -293,15 +293,18 @@ def autonomous(): #(robot should be placed right in the center with pin held)
     control_arm(0)
 
     #Initial toggle switch 
+
     move_bot(0.2,-60)
     wait(0.2,SECONDS)
-    control_arm(40, 100) #hopefully consistently flips the toggle twice
-    
+    control_arm(25, 20) #hopefully consistently flips the toggle twice
+
+
     #ultrasafe toggle sequence (uncomment if the above doesn't work consistently)
-    # wait(0.1,SECONDS) 
-    # control_arm(5)   
-    # wait(0.1,SECONDS) 
-    # control_arm(40, 30)
+    wait(0.1,SECONDS) 
+    control_arm(5)   
+    wait(0.1,SECONDS)
+    move_bot(0.15,-40) 
+    control_arm(25, 20)
     
     #place pin
     wait(0.1,SECONDS)
@@ -315,6 +318,7 @@ def autonomous(): #(robot should be placed right in the center with pin held)
     wait(0.4,SECONDS)
     control_arm(3)
     wait(0.2,SECONDS)
+    move_bot(0.125,-30)
     apply_claw_state(0, is_wide=True) #open
     wait(0.2,SECONDS)
     
