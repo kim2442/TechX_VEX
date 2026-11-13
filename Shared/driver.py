@@ -92,7 +92,7 @@ def update_drive():
     """Reads the joysticks and recomputes left/right drive speeds (deadzone, slow mode, and ratio-preserving scaling applied)."""
     global forwardback, turning, leftspeed, rightspeed, slow_mode
 
-    forwardback  = -controller_1.axis3.position()
+    forwardback  = - ((2** controller_1.axis3.position())-1)
     turning = (-((3/4 * abs(controller_1.axis4.position()) * abs(controller_1.axis4.position())) + (1/4 * controller_1.axis4.position()))*100) #cubic scaling for finer control at low speeds
 
         
