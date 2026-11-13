@@ -5,5 +5,17 @@
 	"python.analysis.extraPaths": [
         "${workspaceFolder}",
 		"${workspaceFolder}/.."
-    ]
+	],
+	"python-envs.pythonProjects": [
+		{
+			"path": "LeftMain",
+			"envManager": "ms-python.python:venv",
+			"packageManager": "ms-python.python:pip"
+		},
+		{
+			"path": "RightMain",
+			"envManager": "ms-python.python:venv",
+			"packageManager": "ms-python.python:pip"
+		}
+	]
 }

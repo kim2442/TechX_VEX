@@ -264,7 +264,7 @@ def controller_a_pressed_callback():
                 break
             wait(5, MSEC)
         if reached:
-            Claw.set_stopping(BRAKE)
+            Claw.set_stopping(COAST)
             Claw.stop()
         else:
             Claw.set_stopping(HOLD)
@@ -272,8 +272,8 @@ def controller_a_pressed_callback():
             controller_1.rumble(".")
         is_claw_open = False
     else:
-        Claw.set_stopping(BRAKE)
-        Claw.spin(FORWARD, 7, VOLT)
+        Claw.set_stopping(HOLD)
+        Claw.spin(FORWARD, 9, VOLT)
         wait(0.1, SECONDS) #half-open
         Claw.stop()
         is_claw_open = True
