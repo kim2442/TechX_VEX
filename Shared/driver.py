@@ -93,7 +93,7 @@ def update_drive():
     global forwardback, turning, leftspeed, rightspeed, slow_mode
 
     forwardback  = -controller_1.axis3.position()
-    turning = - 2 **  ((abs(controller_1.axis4.position()) / 100) - 1)
+    turning = (-((3/4 * abs(controller_1.axis4.position()) * abs(controller_1.axis4.position())) + (1/4 * controller_1.axis4.position()))*100) #cubic scaling for finer control at low speeds
 
         
     # deadzone 
@@ -280,7 +280,7 @@ def controller_x_pressed_callback():
     """Makes the claw open all the way (for grabbing the pin in middle of the field) or clamp down hard instead of resting neutrally"""
     #currently broken; need to copy above code
     global claw_state
-    control_claw(is_wide=True)
+    #control_claw(is_wide=True)
 
 
 
