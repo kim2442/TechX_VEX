@@ -3,19 +3,34 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build VEX Autonomous Programs",
+            "label": "Build LeftMain",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/build.py",
+                "LeftMain"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build RightMain",
+            "type": "shell",
+            "command": "python3",
+            "args": [
+                "${workspaceFolder}/build.py",
+                "RightMain"
+            ],
+            "group": "build",
+            "problemMatcher": []
+        },
+        {
+            "label": "Build Both",
             "type": "shell",
             "command": "python3",
             "args": [
                 "${workspaceFolder}/build.py"
             ],
-            "options": {
-                "cwd": "${workspaceFolder}"
-            },
-            "group": {
-                "kind": "build",
-                "isDefault": true
-            },
             "problemMatcher": []
         }
     ]
