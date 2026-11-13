@@ -215,7 +215,7 @@ def controller_b_pressed_callback():
 def controller_r1_pressed_callback():
     """Callback for when the R1 button is pressed (Forward Arm)."""
     if (Arm.position(DEGREES) < 400): #max height is 405 (here, 5 deg margin)
-        Arm.spin(FORWARD, 6, VOLT) #ignore pylance issue; works fine
+        Arm.spin(FORWARD, 6, VOLT) # type: ignore #ignore pylance issue; works fine
 
 def controller_r1_released_callback():
     """Stops moving arm when R1 button is released."""
@@ -223,7 +223,7 @@ def controller_r1_released_callback():
 
 def controller_r2_pressed_callback():
     """Callback for when the R2 button is pressed (Reverse Arm)."""
-    Arm.spin(REVERSE, 3, VOLT) 
+    Arm.spin(REVERSE, 3, VOLT)  # type: ignore
     
 def controller_r2_released_callback():
     """Stops moving arm when R2 button is released."""
