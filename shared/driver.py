@@ -85,7 +85,7 @@ def update_drive():
 
     fb_raw  = controller_1.axis3.position() / 100.0
     turn_raw = controller_1.axis4.position() / 100.0
-    forwardback  = - math.copysign (1, fb_raw) * ((2** abs(fb_raw))-1)*100 
+    forwardback  = - math.copysign (1, fb_raw) * ((2** abs(fb_raw))- (1* math.copysign (1, fb_raw)))*100 
     turning = (-((3/4 * (turn_raw) * abs(turn_raw)) + (1/4 * turn_raw))*100) #cubic scaling for finer control at low speeds 
     
         
