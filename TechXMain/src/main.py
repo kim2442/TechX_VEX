@@ -1,3 +1,12 @@
+# ---------------------------------------------------------------------------- #
+#                                                                              #
+# 	Module:       main.py                                                      #
+# 	Author:       wawa                                                         #
+# 	Created:      15/10/2026, 10:06:34                                         #
+# 	Description:  V5 project                                                   #
+#                                                                              #
+# ---------------------------------------------------------------------------- #
+
 from vex import *
 #import urandom
 import math
@@ -109,9 +118,41 @@ def update_drive():
     if max_speed > 100:
         leftspeed = leftspeed / max_speed * 100
         rightspeed = rightspeed / max_speed * 100
+# --- Autonomous side selector (tap the brain screen) ---
+# Autonomous routines are written for the LEFT side (the default).
+# Tapping RIGHT on the brain screen mirrors every turn_in_place() automatically.
+
+auton_side = "left"
+
+def draw_side_selector():
+    """Draws the LEFT/RIGHT buttons on the brain screen, highlighting the selected side."""
+    brain.screen.clear_screen()
+    brain.screen.set_font(FontType.MONO20)
+    brain.screen.set_pen_color(Color.WHITE)
+    brain.screen.set_fill_color(Color.BLACK)
+    brain.screen.print_at("Tap to choose AUTON side", x=110, y=25)
+
+    brain.screen.set_font(FontType.MONO40)
+    for side, x in (("left", 10), ("right", 250)):
+        fill = Color.GREEN if side == auton_side else Color.BLACK
+        brain.screen.set_pen_color(Color.WHITE)
+        brain.screen.set_fill_color(fill)
+        brain.screen.draw_rectangle(x, 45, 220, 180)
+        brain.screen.set_pen_color(Color.BLACK if side == auton_side else Color.WHITE)
+        brain.screen.print_at(side.upper(), x=x + 65, y=145)
+
+def brain_screen_pressed_callback():
+    """Selects the auton side based on which half of the screen was tapped."""
+    global auton_side
+    auton_side = "left" if brain.screen.x_position() < 240 else "right"
+    draw_side_selector()
+
+brain.screen.pressed(brain_screen_pressed_callback)
+draw_side_selector()
+
 # --- Autonomous logic ---
 
-def move_bot(t, speed): 
+def move_bot(t, speed):
     """Drives straight for t seconds at the given speed percent (negative speed drives backward)."""
     LeftMotors.set_velocity(speed, PERCENT)
     RightMotors.set_velocity(speed, PERCENT)
@@ -122,7 +163,10 @@ def move_bot(t, speed):
     RightMotors.stop()
 
 def turn_in_place(deg):
-    """Turns the robot in place by deg degrees using the inertial sensor (negative = left, positive = right)."""
+    """Turns the robot in place by deg degrees using the inertial sensor (negative = left, positive = right).
+    Mirrored automatically when RIGHT is selected on the brain screen."""
+    if auton_side == "right":
+        deg = -deg
     target_rotation = inertial_sensor.rotation(DEGREES) + deg
     LeftMotors.set_velocity(50, PERCENT)
     RightMotors.set_velocity(50, PERCENT)
@@ -363,3 +407,68 @@ controller_1.buttonDown.pressed(controller_down_pressed_callback)
 wait(200, MSEC)
 # clear the console to make sure we don't have the REPL in the console
 print("\033[2J")
+
+
+# --- Main autonomous routine ---
+def autonomous(): #(robot should be placed right in the center with pin held)
+
+    #Free toggle mechanism (initially tied down by rubber bands for space)
+    apply_claw_state(2) #clamp
+    move_bot(0.2,60)                                                                                                                                                         #Distance the robot from wall
+    wait(0.2,SECONDS)
+    control_arm(70, 100)
+    wait(0.1,SECONDS)
+    control_arm(0)
+
+    #Initial toggle switch 
+
+    move_bot(0.2,-60)
+    wait(0.2,SECONDS)
+    control_arm(25, 20) #hopefully consistently flips the toggle twice
+
+
+    #ultrasafe toggle sequence (uncomment if the above doesn't work consistently)
+    wait(0.1,SECONDS) 
+    control_arm(5)   
+    wait(0.1,SECONDS)
+    move_bot(0.15,-40) 
+    control_arm(25, 20)
+    
+    #place pin
+    wait(0.1,SECONDS)
+    move_bot(0.2,50)
+    wait(0.1,SECONDS)
+    turn_in_place(-32)
+    wait(0.2,SECONDS)
+    move_bot(0.7,100)
+    wait(0.2,SECONDS)
+    move_bot(0.35,-20)
+    wait(0.4,SECONDS)
+    control_arm(3)
+    wait(0.2,SECONDS)
+    move_bot(0.125,-30)
+    apply_claw_state(0, is_wide=True) #open
+    wait(0.2,SECONDS)
+    
+    #grab second pin    
+    move_bot(0.2,-50)
+    wait(0.2,SECONDS)
+    """turn_in_place(-40)
+    wait(0.2,SECONDS)
+    move_bot(0.5,50)
+    
+    #return    
+
+    #release
+    control_arm(25, 100)
+    wait(0.2,SECONDS)
+    apply_claw_state(0, is_wide=True) #open"""
+    
+    #prepare for recalibration of Claw sensor
+    apply_claw_state(1)
+
+# Clear console output buffer before starting main loop
+print("\033[2J")
+wait(200, MSEC)
+
+competition = Competition(driver_control, autonomous)

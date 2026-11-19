@@ -8,12 +8,7 @@
 	],
 	"python-envs.pythonProjects": [
 		{
-			"path": "LeftMain",
-			"envManager": "ms-python.python:venv",
-			"packageManager": "ms-python.python:pip"
-		},
-		{
-			"path": "RightMain",
+			"path": "TechXMain",
 			"envManager": "ms-python.python:venv",
 			"packageManager": "ms-python.python:pip"
 		}

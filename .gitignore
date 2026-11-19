@@ -220,5 +220,4 @@ __marimo__/
 .streamlit/secrets.toml
 .DS_Store
 .DS_Store
-LeftMain/.DS_Store
-RightMain/.DS_Store
+TechXMain/.DS_Store
