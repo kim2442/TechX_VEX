@@ -177,12 +177,40 @@ def update_claw():
     claw_prev_a = a_pressed
     claw_prev_x = x_pressed
 
-# --- Autonomous side selector (controller D-pad LEFT / RIGHT) ---
-# Autonomous routines are written for the LEFT side (the default).
-# Pressing RIGHT on the controller D-pad (before the match) mirrors every turn_in_place() automatically.
+# --- Arm logic --- #TODO: smooth arm movement 
 
-auton_side = "left"
-side_selector_locked = False #set once auton/driver control starts so the D-pad can't change it mid-match
+ARM_MAX_DEG = 400   # max height is 405 (here, 5 deg margin)
+ARM_UP_VOLT = 6
+ARM_DOWN_VOLT = 3
+
+arm_direction = None 
+
+def update_arm():
+    """R1: raise arm. R2: lower arm."""
+    global arm_direction
+
+    if controller_1.buttonR1.pressing() and Arm.position(DEGREES) < ARM_MAX_DEG: #to avoid overextension
+        target_direction = "up"
+    elif controller_1.buttonR2.pressing():
+        target_direction = "down"
+    else: 
+        target_direction = None
+
+    if target_direction == arm_direction:
+        return #only send motor commands when direction of the arm changes
+    arm_direction = target_direction
+
+    if target_direction == "up":
+        Arm.spin(FORWARD, ARM_UP_VOLT, VOLT) # type: ignore #<-- ignore pylance issue; works fine
+    elif target_direction == "down":
+        Arm.spin(REVERSE, ARM_DOWN_VOLT, VOLT) # type: ignore
+    else:
+        Arm.stop()
+
+# --- Autonomous side selector ---
+
+auton_side = "left" #as in the direction of the colored goal
+side_selector_locked = False #D-pad shoudln't change it mid-match
 
 def draw_side_selector():
     """Shows the selected auton side on the controller screen and the brain screen."""
@@ -196,7 +224,6 @@ def draw_side_selector():
     brain.screen.set_font(FontType.MONO20)
     brain.screen.set_pen_color(Color.WHITE)
     brain.screen.set_fill_color(Color.BLACK)
-    brain.screen.print_at("Use controller D-pad L/R for AUTON side", x=20, y=25)
 
     brain.screen.set_font(FontType.MONO40)
     for side, x in (("left", 10), ("right", 250)):
@@ -266,9 +293,6 @@ def control_arm(raise_pct, velocity = 60):
     goal_rotation = (raise_pct/100) * 405
     Arm.spin_to_position(goal_rotation, DEGREES, velocity, PERCENT)
 
-
-
-
 # --- Event Callbacks (Input Handling) ---
 
 # Drive callbacks
@@ -288,24 +312,6 @@ def controller_b_pressed_callback():
     else:
         controller_1.screen.print("FAST MODE")
 
-# Arm callbacks #TODO: smooth arm movement (exponential moving average) 
-def controller_r1_pressed_callback():
-    """Callback for when the R1 button is pressed (Forward Arm)."""
-    if (Arm.position(DEGREES) < 400): #max height is 405 (here, 5 deg margin)
-        Arm.spin(FORWARD, 6, VOLT) # type: ignore #ignore pylance issue; works fine
-
-def controller_r1_released_callback():
-    """Stops moving arm when R1 button is released."""
-    Arm.stop()
-
-def controller_r2_pressed_callback():
-    """Callback for when the R2 button is pressed (Reverse Arm)."""
-    Arm.spin(REVERSE, 3, VOLT)  # type: ignore
-    
-def controller_r2_released_callback():
-    """Stops moving arm when R2 button is released."""
-    Arm.stop()
-
 def controller_down_pressed_callback(): #workaround for firmware bug where motors lock up after program termination
     Arm.set_stopping(BRAKE)
     #TODO: use brain.program_stop()
@@ -322,9 +328,9 @@ def driver_control():
     while True:
         update_drive()
         update_claw()
+        update_arm()
 
         # --- DEBUG ---
-        
         #oldRotation = "0" #debug
         #oldClaw = "0" #debug
 
@@ -382,11 +388,6 @@ wait(200, MSEC)
 
 
 # --- Event Binding ---
-controller_1.buttonR1.released(controller_r1_released_callback)
-controller_1.buttonR2.released(controller_r2_released_callback)
-controller_1.buttonR1.pressed(controller_r1_pressed_callback)
-controller_1.buttonR2.pressed(controller_r2_pressed_callback)
-
 # controller_1.axis4.changed(controller_axis_changed_callback)
 # controller_1.axis3.changed(controller_axis_changed_callback)
 #controller_1.buttonA.pressed(controller_a_pressed_callback)
@@ -407,6 +408,7 @@ print("\033[2J")
 def autonomous(): #(robot should be placed right in the center with pin held)
     global side_selector_locked
     side_selector_locked = True
+    
     #Free toggle mechanism (initially tied down by rubber bands for space)
     move_bot(0.2, 60)
     wait(0.2, SECONDS)
