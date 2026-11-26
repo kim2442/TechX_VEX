@@ -88,21 +88,35 @@ arm_sensor.set_position(0, DEGREES)
 Arm.set_position(0, DEGREES)
 Arm.set_stopping(HOLD) 
 
+fb_filtered = 0.0 #for exponentional moving average
+turn_filtered = 0.0 #for exponentional moving average
+
 def update_drive():
     """Reads the joysticks and recomputes left/right drive speeds (deadzone, slow mode, and ratio-preserving scaling applied)."""
     global forwardback, turning, leftspeed, rightspeed, slow_mode
+    global fb_filtered, turn_filtered
+
 
     fb_raw  = controller_1.axis3.position() / 100.0
     turn_raw = controller_1.axis4.position() / 100.0
-    forwardback  = - math.copysign (1, fb_raw) * ((2** abs(fb_raw))- (1* math.copysign (1, fb_raw)))*100 
-    turning = (-((3/4 * (turn_raw) * abs(turn_raw)) + (1/4 * turn_raw))*100) #cubic scaling for finer control at low speeds 
+
+    EMA_SIGMA = 0.3 #for exponentional moving averag (lower = more smoothing)
     
-        
+    fb_filtered += (fb_raw - fb_filtered) * EMA_SIGMA 
+    turn_filtered += (turn_raw - turn_filtered) * EMA_SIGMA
+
     # deadzone 
-    if abs(fb_raw) < 0.02:
+    DRIVE_DEADZONE = 0.02  
+    
+    if abs(fb_filtered) < DRIVE_DEADZONE:
         forwardback = 0
-    if abs(turn_raw) < 0.02:
+    else:
+        forwardback = -math.copysign((2**abs(fb_filtered) - 1) * 100, fb_filtered) #TODO: need update notebook
+
+    if abs(turn_filtered) < DRIVE_DEADZONE:
         turning = 0
+    else:
+        turning = -((3/4 * turn_filtered * abs(turn_filtered)) + (1/4 * turn_filtered)) * 100 #TODO: need update notebook
 
     # Slow mode: scale inputs down for finer control
     if slow_mode:
@@ -118,19 +132,71 @@ def update_drive():
     if max_speed > 100:
         leftspeed = leftspeed / max_speed * 100
         rightspeed = rightspeed / max_speed * 100
-# --- Autonomous side selector (tap the brain screen) ---
+
+# --- Claw logic ---
+
+CLAW_HOLD_DELAY_MS = 250      # hold A this long before the claw reverses
+CLAW_X_SPIN_MS = 1500         # how long X spins the claw forward
+
+claw_prev_a = False
+claw_prev_x = False
+claw_a_pressed_at = None
+claw_reversing = False
+claw_reverse_started_at = 0
+
+def update_claw():
+    """X: spin claw forward for 1.5 s, then hold. A: stop; hold A for 250 ms to spin in reverse."""
+    global claw_prev_a, claw_prev_x, claw_a_pressed_at, claw_reversing, claw_reverse_started_at
+
+    a_pressed = controller_1.buttonA.pressing()
+    x_pressed = controller_1.buttonX.pressing()
+    now = brain.timer.time(MSEC)
+
+    if x_pressed and not claw_prev_x:
+        Claw.spin(FORWARD, 100, PERCENT)
+        claw_reversing = True
+        claw_reverse_started_at = now
+        claw_a_pressed_at = None
+
+    if a_pressed and not claw_prev_a:
+        claw_reversing = False
+        Claw.stop(COAST)
+        claw_a_pressed_at = now
+    elif a_pressed and claw_a_pressed_at is not None and not claw_reversing:
+        if now - claw_a_pressed_at >= CLAW_HOLD_DELAY_MS:
+            Claw.spin(REVERSE, 100, PERCENT)
+
+    if claw_prev_a and not a_pressed:
+        Claw.stop(COAST)
+        claw_a_pressed_at = None
+
+    if claw_reversing and now - claw_reverse_started_at >= CLAW_X_SPIN_MS:
+        Claw.stop(HOLD)
+        claw_reversing = False
+
+    claw_prev_a = a_pressed
+    claw_prev_x = x_pressed
+
+# --- Autonomous side selector (controller D-pad LEFT / RIGHT) ---
 # Autonomous routines are written for the LEFT side (the default).
-# Tapping RIGHT on the brain screen mirrors every turn_in_place() automatically.
+# Pressing RIGHT on the controller D-pad (before the match) mirrors every turn_in_place() automatically.
 
 auton_side = "left"
+side_selector_locked = False #set once auton/driver control starts so the D-pad can't change it mid-match
 
 def draw_side_selector():
-    """Draws the LEFT/RIGHT buttons on the brain screen, highlighting the selected side."""
+    """Shows the selected auton side on the controller screen and the brain screen."""
+    controller_1.screen.clear_screen()
+    controller_1.screen.set_cursor(1, 1)
+    controller_1.screen.print("AUTON: " + auton_side.upper())
+    controller_1.screen.set_cursor(2, 1)
+    controller_1.screen.print("D-pad L/R to change")
+
     brain.screen.clear_screen()
     brain.screen.set_font(FontType.MONO20)
     brain.screen.set_pen_color(Color.WHITE)
     brain.screen.set_fill_color(Color.BLACK)
-    brain.screen.print_at("Tap to choose AUTON side", x=110, y=25)
+    brain.screen.print_at("Use controller D-pad L/R for AUTON side", x=20, y=25)
 
     brain.screen.set_font(FontType.MONO40)
     for side, x in (("left", 10), ("right", 250)):
@@ -141,13 +207,20 @@ def draw_side_selector():
         brain.screen.set_pen_color(Color.BLACK if side == auton_side else Color.WHITE)
         brain.screen.print_at(side.upper(), x=x + 65, y=145)
 
-def brain_screen_pressed_callback():
-    """Selects the auton side based on which half of the screen was tapped."""
+def select_auton_side(side):
+    """Sets the auton side (ignored once the match has started)."""
     global auton_side
-    auton_side = "left" if brain.screen.x_position() < 240 else "right"
+    if side_selector_locked or side == auton_side:
+        return
+    auton_side = side
     draw_side_selector()
 
-brain.screen.pressed(brain_screen_pressed_callback)
+def controller_left_pressed_callback():
+    select_auton_side("left")
+
+def controller_right_pressed_callback():
+    select_auton_side("right")
+
 draw_side_selector()
 
 # --- Autonomous logic ---
@@ -164,7 +237,7 @@ def move_bot(t, speed):
 
 def turn_in_place(deg):
     """Turns the robot in place by deg degrees using the inertial sensor (negative = left, positive = right).
-    Mirrored automatically when RIGHT is selected on the brain screen."""
+    Mirrored automatically when RIGHT is selected with the controller D-pad."""
     if auton_side == "right":
         deg = -deg
     target_rotation = inertial_sensor.rotation(DEGREES) + deg
@@ -193,47 +266,15 @@ def control_arm(raise_pct, velocity = 60):
     goal_rotation = (raise_pct/100) * 405
     Arm.spin_to_position(goal_rotation, DEGREES, velocity, PERCENT)
 
-def apply_claw_state(desired_state, is_wide = False):
-    """Applies the desired claw state to the claw motor and syncs is_claw_open.
 
-    desired_state: 0 = open, 1 = loosely closed, 2 = clamp
-    is_wide: if True, opens the claw wider
-    """
-    
-    #REVERSE is closing the claw, FORWARD is opening the claw
-    global is_claw_open
-    is_claw_open = (desired_state == 0) #keep is_claw_open in sync no matter who moves the claw (A, X, autonomous)
-
-    claw_time = 0.03 
-    if is_wide:
-        claw_time = 0.07
-
-    if desired_state == 0: #open
-        Claw.spin(FORWARD, 7, VOLT)
-        wait(claw_time, SECONDS) #half-open
-        Claw.stop()
-            
-    if desired_state == 1: #loosly closed
-        Claw.spin(REVERSE, 7, VOLT)
-        wait(0.08, SECONDS) 
-        Claw.stop()
-
-    if desired_state == 2: #clamp
-        #controller_1.rumble(".")
-        Claw.spin(REVERSE, 7, VOLT)
-
-# def control_claw(is_wide = False):
-#     global claw_state
-#     apply_claw_state(claw_state % 3, is_wide) #wrap around to 0,1,2
-#     claw_state += 1
 
 
 # --- Event Callbacks (Input Handling) ---
 
 # Drive callbacks
-def controller_axis_changed_callback():
-    """Recomputes drive speeds whenever a joystick axis changes."""
-    update_drive()
+# def controller_axis_changed_callback():
+#     """Recomputes drive speeds whenever a joystick axis changes."""
+#     update_drive()
 
 def controller_b_pressed_callback():
     """Toggles slow mode for finer control."""
@@ -246,10 +287,8 @@ def controller_b_pressed_callback():
         controller_1.screen.print("SLOW MODE")
     else:
         controller_1.screen.print("FAST MODE")
-    update_drive()
 
-
-# Arm callbacks
+# Arm callbacks #TODO: smooth arm movement (exponential moving average) 
 def controller_r1_pressed_callback():
     """Callback for when the R1 button is pressed (Forward Arm)."""
     if (Arm.position(DEGREES) < 400): #max height is 405 (here, 5 deg margin)
@@ -267,75 +306,28 @@ def controller_r2_released_callback():
     """Stops moving arm when R2 button is released."""
     Arm.stop()
 
-
 def controller_down_pressed_callback(): #workaround for firmware bug where motors lock up after program termination
     Arm.set_stopping(BRAKE)
     #TODO: use brain.program_stop()
 
-# Claw callbacks
-# def controller_a_pressed_callback():
-#     global claw_state
-#     control_claw()
-
-def controller_a_pressed_callback():
-    """Handles button A press (regular claw control). EXPERIMENTAL"""
-    #global claw_state
-    global is_claw_open
-
-    #controller_1.screen.clear_row(2)
-    #controller_1.screen.set_cursor(2,1)
-    #controller_1.screen.print(is_claw_open)
-    #print(is_claw_open)
-    
-
-    if is_claw_open: #if open, close
-        start_time = brain.timer.time(MSEC)
-        reached = False
-        Claw.spin(REVERSE, 7, VOLT) #REVERSE closes the claw
-        while brain.timer.time(MSEC) - start_time < 500:
-            if claw_sensor.position(DEGREES) > -5:
-                reached = True
-                break
-            wait(5, MSEC)
-        if reached:
-            Claw.set_stopping(COAST)
-            Claw.stop()
-        else:
-            Claw.set_stopping(HOLD)
-            Claw.stop()
-            controller_1.rumble(".")
-        is_claw_open = False
-    else:
-        Claw.set_stopping(HOLD)
-        Claw.spin(FORWARD, 9, VOLT)
-        wait(0.1, SECONDS) #half-open
-        Claw.stop()
-        is_claw_open = True
-        
-        #apply_claw_state(0) #open (also sets is_claw_open = True)
-        
-def controller_x_pressed_callback():
-    """Makes the claw open all the way (for grabbing the pin in middle of the field) or clamp down hard instead of resting neutrally"""
-    #currently broken; need to copy above code
-    global claw_state
-    #control_claw(is_wide=True)
-
-
-
 # --- Driver Control (Main Loop) ---
 
 def driver_control():
-    global forwardback, leftspeed, rightspeed, claw_state
+    global forwardback, leftspeed, rightspeed, side_selector_locked
+    side_selector_locked = True
     claw_sensor.set_position(0, DEGREES) #reset claw sensor to 0 at start of driver control
     controller_1.screen.clear_screen()
     controller_1.screen.print("driver control!!")
 
-    #oldRotation = "0" #debug
-    #oldClaw = "0" #debug
-
     while True:
-        
+        update_drive()
+        update_claw()
+
         # --- DEBUG ---
+        
+        #oldRotation = "0" #debug
+        #oldClaw = "0" #debug
+
         # newRotation = str(claw_sensor.position(DEGREES)) #debug
         # if (oldRotation != newRotation):
 
@@ -395,12 +387,14 @@ controller_1.buttonR2.released(controller_r2_released_callback)
 controller_1.buttonR1.pressed(controller_r1_pressed_callback)
 controller_1.buttonR2.pressed(controller_r2_pressed_callback)
 
-controller_1.axis4.changed(controller_axis_changed_callback)
-controller_1.axis3.changed(controller_axis_changed_callback)
-controller_1.buttonA.pressed(controller_a_pressed_callback)
+# controller_1.axis4.changed(controller_axis_changed_callback)
+# controller_1.axis3.changed(controller_axis_changed_callback)
+#controller_1.buttonA.pressed(controller_a_pressed_callback)
 controller_1.buttonB.pressed(controller_b_pressed_callback)
-controller_1.buttonX.pressed(controller_x_pressed_callback)
+#controller_1.buttonX.pressed(controller_x_pressed_callback)
 controller_1.buttonDown.pressed(controller_down_pressed_callback)
+controller_1.buttonLeft.pressed(controller_left_pressed_callback)
+controller_1.buttonRight.pressed(controller_right_pressed_callback)
 
 
 # add a small delay to make sure we don't print in the middle of the REPL header
@@ -411,61 +405,43 @@ print("\033[2J")
 
 # --- Main autonomous routine ---
 def autonomous(): #(robot should be placed right in the center with pin held)
-
+    global side_selector_locked
+    side_selector_locked = True
     #Free toggle mechanism (initially tied down by rubber bands for space)
-    apply_claw_state(2) #clamp
-    move_bot(0.2,60)                                                                                                                                                         #Distance the robot from wall
-    wait(0.2,SECONDS)
-    control_arm(70, 100)
-    wait(0.1,SECONDS)
-    control_arm(0)
+    move_bot(0.2, 60)
+    wait(0.2, SECONDS)
+    control_arm(70, 50)
+    wait(0.1, SECONDS)
+    control_arm(0, 20)
 
-    #Initial toggle switch 
-
-    move_bot(0.2,-60)
-    wait(0.2,SECONDS)
-    control_arm(25, 20) #hopefully consistently flips the toggle twice
-
-
-    #ultrasafe toggle sequence (uncomment if the above doesn't work consistently)
-    wait(0.1,SECONDS) 
-    control_arm(5)   
-    wait(0.1,SECONDS)
-    move_bot(0.15,-40) 
+    move_bot(0.2, -60)
+    wait(0.2, SECONDS)
     control_arm(25, 20)
-    
-    #place pin
-    wait(0.1,SECONDS)
-    move_bot(0.2,50)
-    wait(0.1,SECONDS)
-    turn_in_place(-32)
-    wait(0.2,SECONDS)
-    move_bot(0.7,100)
-    wait(0.2,SECONDS)
-    move_bot(0.35,-20)
-    wait(0.4,SECONDS)
-    control_arm(3)
-    wait(0.2,SECONDS)
-    move_bot(0.125,-30)
-    apply_claw_state(0, is_wide=True) #open
-    wait(0.2,SECONDS)
-    
-    #grab second pin    
-    move_bot(0.2,-50)
-    wait(0.2,SECONDS)
-    """turn_in_place(-40)
-    wait(0.2,SECONDS)
-    move_bot(0.5,50)
-    
-    #return    
 
-    #release
-    control_arm(25, 100)
-    wait(0.2,SECONDS)
-    apply_claw_state(0, is_wide=True) #open"""
-    
-    #prepare for recalibration of Claw sensor
-    apply_claw_state(1)
+    wait(0.1, SECONDS)
+    control_arm(5)
+    wait(0.1, SECONDS)
+    move_bot(0.3, -20)
+    control_arm(35, 20)
+
+    wait(0.1, SECONDS)
+    move_bot(0.2, 50)
+    wait(0.1, SECONDS)
+    turn_in_place(-40)
+    wait(0.2, SECONDS)
+    move_bot(1.4, 50)
+    wait(0.2, SECONDS)
+    move_bot(0.35, -20)
+    wait(0.4, SECONDS)
+    control_arm(5, 20)
+    wait(0.2, SECONDS)
+    move_bot(0.125, -30)
+    Claw.spin(FORWARD, 100, PERCENT)
+    wait(1, SECONDS)
+    Claw.stop()
+
+    move_bot(0.2, -50)
+    wait(0.2, SECONDS)
 
 # Clear console output buffer before starting main loop
 print("\033[2J")
