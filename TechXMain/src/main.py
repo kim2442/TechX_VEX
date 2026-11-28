@@ -177,35 +177,48 @@ def update_claw():
     claw_prev_a = a_pressed
     claw_prev_x = x_pressed
 
-# --- Arm logic --- #TODO: smooth arm movement 
+# --- Arm logic --- 
 
 ARM_MAX_DEG = 400   # max height is 405 (here, 5 deg margin)
-ARM_UP_VOLT = 6
-ARM_DOWN_VOLT = 3
 
-arm_direction = None 
+# PID constants - tune these for your arm
+ARM_KP = 0.15
+ARM_KD = 0.02
+ARM_UP_MAX_VOLT = 8.5
+ARM_DOWN_MAX_VOLT = 4
+
+arm_direction = None
+arm_prev_error = 0.0
 
 def update_arm():
-    """R1: raise arm. R2: lower arm."""
-    global arm_direction
+    """R1: raise arm. R2: lower arm. Uses PID position control for smooth movement."""
+    global arm_prev_error
 
-    if controller_1.buttonR1.pressing() and Arm.position(DEGREES) < ARM_MAX_DEG: #to avoid overextension
-        target_direction = "up"
-    elif controller_1.buttonR2.pressing():
-        target_direction = "down"
-    else: 
-        target_direction = None
+    r1_pressed = controller_1.buttonR1.pressing()
+    r2_pressed = controller_1.buttonR2.pressing()
+    current_pos = Arm.position(DEGREES)
 
-    if target_direction == arm_direction:
-        return #only send motor commands when direction of the arm changes
-    arm_direction = target_direction
-
-    if target_direction == "up":
-        Arm.spin(FORWARD, ARM_UP_VOLT, VOLT) # type: ignore #<-- ignore pylance issue; works fine
-    elif target_direction == "down":
-        Arm.spin(REVERSE, ARM_DOWN_VOLT, VOLT) # type: ignore
+    if r1_pressed and current_pos < ARM_MAX_DEG:
+        target_pos = ARM_MAX_DEG
+    elif r2_pressed:
+        target_pos = 0
     else:
         Arm.stop()
+        arm_prev_error = 0.0
+        return
+
+    error = target_pos - current_pos
+    derivative = error - arm_prev_error
+    arm_prev_error = error
+
+    output = ARM_KP * error + ARM_KD * derivative
+
+    if output > 0:
+        output = min(output, ARM_UP_MAX_VOLT)
+        Arm.spin(FORWARD, output, VOLT)
+    else:
+        output = max(output, -ARM_DOWN_MAX_VOLT)
+        Arm.spin(REVERSE, -output, VOLT)
 
 # --- Autonomous side selector ---
 
