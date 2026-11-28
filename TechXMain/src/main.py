@@ -190,7 +190,7 @@ ARM_DOWN_MAX_VOLT = 4
 arm_direction = None
 arm_prev_error = 0.0
 
-def update_arm():
+'''def update_arm():
     """R1: raise arm. R2: lower arm. Uses PID position control for smooth movement."""
     global arm_prev_error
 
@@ -219,7 +219,8 @@ def update_arm():
     else:
         output = max(output, -ARM_DOWN_MAX_VOLT)
         Arm.spin(REVERSE, -output, VOLT)
-'''def update_arm():
+'''
+def update_arm():
     """R1: raise arm. R2: lower arm."""
     global arm_direction
 
@@ -239,8 +240,8 @@ def update_arm():
     elif target_direction == "down":
         Arm.spin(REVERSE, ARM_DOWN_VOLT, VOLT) # type: ignore
     else:
-        Arm.stop()
-    '''
+        Arm.stop(BRAKE)
+    
 # --- Autonomous side selector ---
 
 auton_side = "left" #as in the direction of the colored goal
