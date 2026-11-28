@@ -219,7 +219,28 @@ def update_arm():
     else:
         output = max(output, -ARM_DOWN_MAX_VOLT)
         Arm.spin(REVERSE, -output, VOLT)
+'''def update_arm():
+    """R1: raise arm. R2: lower arm."""
+    global arm_direction
 
+    if controller_1.buttonR1.pressing() and Arm.position(DEGREES) < ARM_MAX_DEG: #to avoid overextension
+        target_direction = "up"
+    elif controller_1.buttonR2.pressing():
+        target_direction = "down"
+    else: 
+        target_direction = None
+
+    if target_direction == arm_direction:
+        return #only send motor commands when direction of the arm changes
+    arm_direction = target_direction
+
+    if target_direction == "up":
+        Arm.spin(FORWARD, ARM_UP_VOLT, VOLT) # type: ignore #<-- ignore pylance issue; works fine
+    elif target_direction == "down":
+        Arm.spin(REVERSE, ARM_DOWN_VOLT, VOLT) # type: ignore
+    else:
+        Arm.stop()
+    '''
 # --- Autonomous side selector ---
 
 auton_side = "left" #as in the direction of the colored goal
